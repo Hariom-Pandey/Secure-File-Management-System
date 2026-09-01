@@ -59,8 +59,8 @@ class Config:
     JWT_ACCESS_TOKEN_EXPIRES = 3600  # 1 hour in seconds
 
     GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-    GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-    GROQ_FALLBACK_MODEL = os.environ.get("GROQ_FALLBACK_MODEL", "llama-3.1-8b-instant")
+    GROQ_MODEL = os.environ.get("GROQ_MODEL", "qwen/qwen3.8-27b")
+    GROQ_FALLBACK_MODEL = os.environ.get("GROQ_FALLBACK_MODEL", "groq/compound")
     GROQ_API_URL = os.environ.get(
         "GROQ_API_URL",
         "https://api.groq.com/openai/v1/chat/completions",
@@ -71,6 +71,21 @@ class Config:
     }
     AI_RATE_LIMIT_PER_MINUTE = 30
     BOT_RATE_LIMIT_WINDOW_SECONDS = int(os.environ.get("BOT_RATE_LIMIT_WINDOW_SECONDS", "60"))
+
+    # Supabase Configuration
+    SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
+    SUPABASE_KEY = os.environ.get(
+        "SUPABASE_KEY",
+        os.environ.get(
+            "SUPABASE_SERVICE_ROLE_KEY",
+            os.environ.get("SUPABASE_ANON_KEY", "")
+        )
+    ).strip()
+    SUPABASE_STORAGE_BUCKET = os.environ.get("SUPABASE_STORAGE_BUCKET", "secure-files").strip()
+    USE_SUPABASE_STORAGE = os.environ.get("USE_SUPABASE_STORAGE", "true").lower() in {
+        "1", "true", "yes", "on", "auto"
+    }
+    USE_SUPABASE_DB = os.environ.get("USE_SUPABASE_DB", "auto").lower()
 
     DATABASE_PATH = os.path.join(BASE_DIR, "data", "secure_files.db")
     STORAGE_PATH = os.path.join(BASE_DIR, "storage")

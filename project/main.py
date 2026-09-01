@@ -118,7 +118,21 @@ def create_app(testing=False):
     # Health check
     @app.route('/api/health', methods=['GET'])
     def health():
-        return {"status": "ok", "service": "Secure File Management System"}, 200
+        from app.supabase_client import is_supabase_configured
+        supabase_active = is_supabase_configured()
+        storage_mode = (
+            f"supabase ({Config.SUPABASE_STORAGE_BUCKET})"
+            if supabase_active and Config.USE_SUPABASE_STORAGE
+            else "local disk"
+        )
+        return {
+            "status": "ok",
+            "service": "Secure File Management System",
+            "database": "supabase" if supabase_active else "sqlite",
+            "storage": storage_mode,
+            "supabase_configured": supabase_active,
+            "storage_bucket": Config.SUPABASE_STORAGE_BUCKET,
+        }, 200
 
     # Initialize database
     with app.app_context():
@@ -128,9 +142,19 @@ def create_app(testing=False):
 
 
 if __name__ == '__main__':
+    from app.supabase_client import is_supabase_configured
     app = create_app()
     print("\n=== Secure File Management System ===")
     print("Server running at http://127.0.0.1:5000")
+    if is_supabase_configured():
+        print("Database Backend: Supabase (Cloud PostgreSQL)")
+        if Config.USE_SUPABASE_STORAGE:
+            print(f"Cloud Storage: Supabase Bucket '{Config.SUPABASE_STORAGE_BUCKET}'")
+        else:
+            print("Storage: Local Disk (Encrypted)")
+    else:
+        print("Database Backend: SQLite (Local Fallback - configure Supabase in .env anytime)")
+        print(f"Target Storage Bucket: '{Config.SUPABASE_STORAGE_BUCKET}' (Active when Supabase is connected)")
     print("\nFrontend:")
     print("  http://127.0.0.1:5000/login       - Login page")
     print("  http://127.0.0.1:5000/register     - Registration page")

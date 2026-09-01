@@ -97,7 +97,7 @@ If you want real AI-generated file insights, set these environment variables bef
 
 ```bash
 set GROQ_API_KEY=your_key_here
-set GROQ_MODEL=llama-3.3-70b-versatile
+set GROQ_MODEL=qwen/qwen3.8-27b
 set GROQ_REQUIRE_SUCCESS=true
 ```
 

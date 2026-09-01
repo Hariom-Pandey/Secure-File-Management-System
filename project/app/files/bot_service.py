@@ -174,11 +174,11 @@ class BotService:
             if http_error:
                 model_errors.append(http_error)
 
-            # If current model is rate-limited, try next fallback model.
-            if is_rate_limited:
+            # If current model is rate-limited or not available, try next fallback model.
+            if is_rate_limited or 'model_not_found' in str(http_error).lower() or '404' in str(http_error):
                 continue
 
-            # For non-rate limit failures, avoid excessive retries.
+            # For non-recoverable failures, avoid excessive retries.
             break
 
         error_msg = ' | '.join(model_errors).lower()

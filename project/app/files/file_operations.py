@@ -8,6 +8,13 @@ from app.files.intelligence import FileIntelligenceService
 from app.protection.encryption import EncryptionService
 from app.protection.access_control import AccessControlService
 from app.detection.threat_detector import ThreatDetector
+from app.supabase_client import (
+    upload_to_supabase_storage,
+    download_from_supabase_storage,
+    delete_from_supabase_storage,
+    is_supabase_configured,
+    get_supabase_client,
+)
 
 
 class FileOperations:
@@ -70,9 +77,13 @@ class FileOperations:
         internal_name = f"{uuid.uuid4().hex}.enc"
         file_path = os.path.join(Config.STORAGE_PATH, internal_name)
 
-        # Encrypt and save
+        # Encrypt and save locally
         encrypted_data = EncryptionService.encrypt_data(file_data)
         FileOperations._write_bytes_secure(file_path, encrypted_data)
+
+        # Upload to Supabase Storage if configured
+        if Config.USE_SUPABASE_STORAGE and is_supabase_configured():
+            upload_to_supabase_storage(destination_path=internal_name, file_bytes=encrypted_data)
 
         # Determine file type
         file_type = ext.lstrip('.') if ext else "unknown"
@@ -84,6 +95,7 @@ class FileOperations:
             owner_id=user_id,
             file_size=len(file_data),
             file_type=file_type,
+            storage_path=internal_name,
         )
 
         AuditLog.log(
@@ -108,6 +120,14 @@ class FileOperations:
             return None, "File not found."
 
         file_path = os.path.join(Config.STORAGE_PATH, record.filename)
+        
+        # If missing locally, attempt to fetch from Supabase Storage if available
+        if not os.path.exists(file_path) and is_supabase_configured():
+            cloud_bytes, _ = download_from_supabase_storage(record.filename)
+            if cloud_bytes:
+                FileOperations._ensure_storage()
+                FileOperations._write_bytes_secure(file_path, cloud_bytes)
+
         if not os.path.exists(file_path):
             return None, "File data not found on disk."
 
@@ -156,20 +176,35 @@ class FileOperations:
         if not safe:
             return False, messages
 
-        # Encrypt and overwrite
+        # Encrypt and overwrite locally
         file_path = os.path.join(Config.STORAGE_PATH, record.filename)
         encrypted_data = EncryptionService.encrypt_data(new_data)
         FileOperations._write_bytes_secure(file_path, encrypted_data)
 
-        # Update record
-        from app.models.database import get_connection
-        conn = get_connection()
-        conn.execute(
-            "UPDATE files SET file_size = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-            (len(new_data), file_id)
-        )
-        conn.commit()
-        conn.close()
+        # Upload updated ciphertext to Supabase Storage if configured
+        if Config.USE_SUPABASE_STORAGE and is_supabase_configured():
+            upload_to_supabase_storage(destination_path=record.filename, file_bytes=encrypted_data)
+
+        # Update record in Supabase or SQLite
+        updated_in_supabase = False
+        if is_supabase_configured():
+            try:
+                client = get_supabase_client()
+                if client:
+                    client.table("files").update({"file_size": len(new_data)}).eq("id", file_id).execute()
+                    updated_in_supabase = True
+            except Exception:
+                pass
+
+        if not updated_in_supabase:
+            from app.models.database import get_connection
+            conn = get_connection()
+            conn.execute(
+                "UPDATE files SET file_size = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (len(new_data), file_id)
+            )
+            conn.commit()
+            conn.close()
 
         AuditLog.log(
             user_id,
@@ -205,6 +240,10 @@ class FileOperations:
                     "Failed to delete encrypted file from disk"
                 )
                 return False, "Failed to delete file data from disk."
+
+        # Delete from Supabase Storage if configured
+        if Config.USE_SUPABASE_STORAGE and is_supabase_configured():
+            delete_from_supabase_storage(record.filename)
 
         # Delete the database record (cascades to permissions)
         record.delete()

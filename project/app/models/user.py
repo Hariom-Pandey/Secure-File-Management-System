@@ -1,4 +1,8 @@
+import logging
 from app.models.database import get_connection
+from app.supabase_client import get_supabase_client, is_supabase_configured
+
+logger = logging.getLogger(__name__)
 
 
 class User:
@@ -10,12 +14,26 @@ class User:
         self.password_hash = password_hash
         self.role = role
         self.totp_secret = totp_secret
-        self.two_factor_enabled = two_factor_enabled
+        self.two_factor_enabled = bool(two_factor_enabled)
         self.created_at = created_at
         self.updated_at = updated_at
 
     @staticmethod
     def create(username, password_hash, role="user"):
+        if is_supabase_configured():
+            try:
+                client = get_supabase_client()
+                if client:
+                    res = client.table("users").insert({
+                        "username": username,
+                        "password_hash": password_hash,
+                        "role": role,
+                    }).execute()
+                    if res.data and len(res.data) > 0:
+                        return User(**res.data[0])
+            except Exception as e:
+                logger.error(f"Supabase User.create error, falling back to SQLite: {e}")
+
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
@@ -29,6 +47,20 @@ class User:
 
     @staticmethod
     def get_by_id(user_id):
+        if user_id is None:
+            return None
+
+        if is_supabase_configured():
+            try:
+                client = get_supabase_client()
+                if client:
+                    res = client.table("users").select("*").eq("id", user_id).limit(1).execute()
+                    if res.data and len(res.data) > 0:
+                        return User(**res.data[0])
+                    return None
+            except Exception as e:
+                logger.error(f"Supabase User.get_by_id error, falling back to SQLite: {e}")
+
         conn = get_connection()
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         conn.close()
@@ -45,6 +77,17 @@ class User:
         if not normalized:
             return None
 
+        if is_supabase_configured():
+            try:
+                client = get_supabase_client()
+                if client:
+                    res = client.table("users").select("*").ilike("username", normalized).limit(1).execute()
+                    if res.data and len(res.data) > 0:
+                        return User(**res.data[0])
+                    return None
+            except Exception as e:
+                logger.error(f"Supabase User.get_by_username error, falling back to SQLite: {e}")
+
         conn = get_connection()
         row = conn.execute(
             "SELECT * FROM users WHERE username = ? COLLATE NOCASE", (normalized,)
@@ -55,6 +98,20 @@ class User:
         return None
 
     def update_totp_secret(self, secret):
+        if is_supabase_configured():
+            try:
+                client = get_supabase_client()
+                if client:
+                    client.table("users").update({
+                        "totp_secret": secret,
+                        "two_factor_enabled": True
+                    }).eq("id", self.id).execute()
+                    self.totp_secret = secret
+                    self.two_factor_enabled = True
+                    return
+            except Exception as e:
+                logger.error(f"Supabase User.update_totp_secret error, falling back to SQLite: {e}")
+
         conn = get_connection()
         conn.execute(
             "UPDATE users SET totp_secret = ?, two_factor_enabled = 1, "
@@ -67,6 +124,20 @@ class User:
         self.two_factor_enabled = True
 
     def disable_2fa(self):
+        if is_supabase_configured():
+            try:
+                client = get_supabase_client()
+                if client:
+                    client.table("users").update({
+                        "totp_secret": None,
+                        "two_factor_enabled": False
+                    }).eq("id", self.id).execute()
+                    self.totp_secret = None
+                    self.two_factor_enabled = False
+                    return
+            except Exception as e:
+                logger.error(f"Supabase User.disable_2fa error, falling back to SQLite: {e}")
+
         conn = get_connection()
         conn.execute(
             "UPDATE users SET totp_secret = NULL, two_factor_enabled = 0, "
@@ -84,6 +155,6 @@ class User:
             "username": self.username,
             "role": self.role,
             "two_factor_enabled": bool(self.two_factor_enabled),
-            "created_at": self.created_at,
-            "updated_at": self.updated_at,
+            "created_at": str(self.created_at) if self.created_at else None,
+            "updated_at": str(self.updated_at) if self.updated_at else None,
         }

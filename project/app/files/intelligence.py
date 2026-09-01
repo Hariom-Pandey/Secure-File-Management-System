@@ -248,11 +248,11 @@ class FileIntelligenceService:
                     detail = ''
                 model_errors.append(f'HTTP {exc.code}: {detail[:600]}')
 
-                # If rate limited on this model, try fallback model.
-                if exc.code == 429 or 'rate limit' in detail.lower():
+                # If model is unavailable or rate limited, try fallback model.
+                if exc.code in {404, 429} or 'rate limit' in detail.lower() or 'model_not_found' in detail.lower():
                     continue
 
-                # Non-rate limit failure: do not keep retrying aggressively.
+                # Non-recoverable failure: do not keep retrying aggressively.
                 break
             except (URLError, TimeoutError, ValueError, json.JSONDecodeError, OSError) as exc:
                 model_errors.append(str(exc))

@@ -91,3 +91,9 @@ auth.json
 *.pem
 *.p12
 *.pfx
+
+# Dependencies & Agent Cache
+node_modules/
+.agents/
+.gemini/
+
