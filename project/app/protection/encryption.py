@@ -16,21 +16,32 @@ class EncryptionService:
 
     @staticmethod
     def _load_or_create_key():
-        """Load the master encryption key from file, or generate a new one."""
+        """Load the master encryption key from env var or file, or generate a new one."""
+        # Support explicit master key from environment variables (ideal for Vercel/Cloud)
+        env_key = os.environ.get("MASTER_KEY") or os.environ.get("ENCRYPTION_KEY")
+        if env_key:
+            key_bytes = env_key.strip().encode('utf-8')
+            Fernet(key_bytes)
+            return key_bytes
+
         key_dir = os.path.dirname(Config.ENCRYPTION_KEY_FILE)
-        os.makedirs(key_dir, exist_ok=True)
         try:
-            os.chmod(key_dir, 0o700)
-        except OSError:
-            # Permission bits may be ignored on some platforms (e.g., Windows).
+            os.makedirs(key_dir, exist_ok=True)
+            try:
+                os.chmod(key_dir, 0o700)
+            except OSError:
+                pass
+        except (OSError, PermissionError):
             pass
 
         if os.path.exists(Config.ENCRYPTION_KEY_FILE):
-            with open(Config.ENCRYPTION_KEY_FILE, 'rb') as f:
-                key = f.read().strip()
-            # Validate key shape early to fail fast on corruption.
-            Fernet(key)
-            return key
+            try:
+                with open(Config.ENCRYPTION_KEY_FILE, 'rb') as f:
+                    key = f.read().strip()
+                Fernet(key)
+                return key
+            except Exception:
+                pass
 
         # Refuse to silently generate a new key if encrypted files already exist.
         if EncryptionService._has_existing_encrypted_files():
@@ -40,14 +51,16 @@ class EncryptionService:
             )
 
         key = Fernet.generate_key()
-        # Create key file with restricted permissions
-        fd = os.open(Config.ENCRYPTION_KEY_FILE,
-                     os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, 'wb') as f:
-            f.write(key)
         try:
-            os.chmod(Config.ENCRYPTION_KEY_FILE, 0o600)
-        except OSError:
+            fd = os.open(Config.ENCRYPTION_KEY_FILE,
+                         os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, 'wb') as f:
+                f.write(key)
+            try:
+                os.chmod(Config.ENCRYPTION_KEY_FILE, 0o600)
+            except OSError:
+                pass
+        except (OSError, PermissionError):
             pass
         return key
 

@@ -3,20 +3,33 @@ import secrets
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
-# Directory for persistent data
-_DATA_DIR = os.path.join(BASE_DIR, "data")
-os.makedirs(_DATA_DIR, exist_ok=True)
+# Directory for persistent data (falls back to /tmp on serverless environments like Vercel)
+_DATA_DIR = os.environ.get("DATA_DIR")
+if not _DATA_DIR:
+    try:
+        candidate_dir = os.path.join(BASE_DIR, "data")
+        os.makedirs(candidate_dir, exist_ok=True)
+        _DATA_DIR = candidate_dir
+    except (OSError, PermissionError):
+        _DATA_DIR = os.path.join("/tmp", "secure_files_data")
+        try:
+            os.makedirs(_DATA_DIR, exist_ok=True)
+        except OSError:
+            pass
 
 
 def _load_or_create_key(filepath):
-    """Load a secret key from file, or generate and save one if it doesn't exist."""
-    if os.path.exists(filepath):
-        with open(filepath, "r") as f:
-            return f.read().strip()
-    key = secrets.token_hex(32)
-    with open(filepath, "w") as f:
-        f.write(key)
-    return key
+    """Load a secret key from file, or generate one safely."""
+    try:
+        if os.path.exists(filepath):
+            with open(filepath, "r") as f:
+                return f.read().strip()
+        key = secrets.token_hex(32)
+        with open(filepath, "w") as f:
+            f.write(key)
+        return key
+    except (OSError, PermissionError):
+        return secrets.token_hex(32)
 
 
 _SECRET_KEY_FILE = os.path.join(_DATA_DIR, ".secret_key")
@@ -87,12 +100,12 @@ class Config:
     }
     USE_SUPABASE_DB = os.environ.get("USE_SUPABASE_DB", "auto").lower()
 
-    DATABASE_PATH = os.path.join(BASE_DIR, "data", "secure_files.db")
-    STORAGE_PATH = os.path.join(BASE_DIR, "storage")
+    DATABASE_PATH = os.environ.get("DATABASE_PATH", os.path.join(_DATA_DIR, "secure_files.db"))
+    STORAGE_PATH = os.environ.get("STORAGE_PATH", os.path.join(_DATA_DIR, "storage") if "/tmp" in _DATA_DIR else os.path.join(BASE_DIR, "storage"))
     UPLOAD_MAX_SIZE = 50 * 1024 * 1024  # 50 MB
 
     # Encryption
-    ENCRYPTION_KEY_FILE = os.path.join(BASE_DIR, "data", "master.key")
+    ENCRYPTION_KEY_FILE = os.environ.get("ENCRYPTION_KEY_FILE", os.path.join(_DATA_DIR, "master.key"))
 
     # Threat detection
     MAX_INPUT_LENGTH = 10000

@@ -33,9 +33,12 @@ def create_app(testing=False):
             return False
         return isinstance(port, int) and 1 <= port <= 65535
 
-    app = Flask(__name__,
-                template_folder='templates',
-                static_folder='static')
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    app = Flask(
+        __name__,
+        template_folder=os.path.join(project_dir, 'templates'),
+        static_folder=os.path.join(project_dir, 'static'),
+    )
 
     # Configuration
     app.config['SECRET_KEY'] = Config.SECRET_KEY

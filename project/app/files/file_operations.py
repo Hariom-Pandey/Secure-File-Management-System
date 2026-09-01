@@ -22,11 +22,14 @@ class FileOperations:
     @staticmethod
     def _ensure_storage():
         """Ensure the storage directory exists."""
-        os.makedirs(Config.STORAGE_PATH, exist_ok=True)
         try:
-            os.chmod(Config.STORAGE_PATH, 0o700)
-        except OSError:
-            # Permission bits may be ignored on some platforms (e.g., Windows).
+            os.makedirs(Config.STORAGE_PATH, exist_ok=True)
+            try:
+                os.chmod(Config.STORAGE_PATH, 0o700)
+            except OSError:
+                # Permission bits may be ignored on some platforms (e.g., Windows).
+                pass
+        except (OSError, PermissionError):
             pass
 
     @staticmethod
